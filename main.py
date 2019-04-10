@@ -82,7 +82,6 @@ model = {
     'input_layer_batch_size': 10,
     'input_layer_image_shape': [28, 28],
     'input_layer_image_channel': 3,
-
     'conv_and_pool_layer_num': 2,
     'conv_and_pool_layer_filter_ksize': [
         [5, 5],
@@ -102,10 +101,8 @@ model = {
         [2, 2],
         [2, 2]
     ],
-
     'fully_connected_layer_num': 2,
     'fully_connected_layer_units': [128, 128],
-
     'output_layer_units': 2
 }
 
