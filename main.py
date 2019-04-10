@@ -78,6 +78,7 @@ print("test accuracy %g" % accuracy.eval(feed_dict={x: mnist.test.images[0:500],
 
 
 model = {
+    'learning_rate': 0.0002,
     'input_layer_batch_size': 10,
     'input_layer_image_shape': [28, 28],
     'input_layer_image_channel': 3,
@@ -115,10 +116,12 @@ class CnnModel:
         self.model_info = model_shape
 
         self.input_batch = None
+        self.label_batch = None
         self.output = None
-        self.accuracy = None
         self.loss = None
         self.train = None
+        self.accuracy = None
+        self.create_model()
 
         self.sess_init = tf.global_variables_initializer()
         self.sess.run(self.sess_init)
@@ -130,13 +133,21 @@ class CnnModel:
             self.model_info['input_layer_image_shape'][1],
             self.model_info['input_layer_image_channel']
         ]
+
         self.input_batch = tf.placeholder(dtype=tf.float32, shape=batch_shape)
+        self.label_batch = tf.placeholder(dtype=tf.float32, shape=[self.model_info['input_layer_batch_size'], self.model_info["output_layer_units"]])
+
         layer_input = self.input_batch
         for layer_id in self.model_info['conv_and_pool_layer_num']:
             layer_input = self.create_conv_and_pool_layer(layer_id, layer_input)
 
         for layer_id in self.model_info['fully_connected_layer_num']:
             layer_input = self.create_fully_connected_layer(layer_id, layer_input)
+
+        self.output = self.create_output_layer(layer_input)
+        self.loss = -tf.reduce_sum(self.label_batch * tf.log(self.output))
+        self.train = tf.train.AdamOptimizer(self.model_info['learning_rate']).minimize(self.loss)
+        self.accuracy = tf.reduce_mean(tf.cast(tf.equal(tf.arg_max(self.output, 1), tf.arg_max(self.label_batch, 1)), 'float'))
 
     def create_conv_and_pool_layer(self, layer_id, layer_input):
         conv_ksize = [
@@ -185,8 +196,19 @@ class CnnModel:
     def create_fully_connected_layer(self, layer_id, layer_input):
         with tf.variable_scope("fully_connected_layer_" + str(layer_id)) as scope:
             output = tf.layers.dense(layer_input,
-                                  self.model_info["fully_connected_layer_units"][layer_id],
-                                  tf.nn.relu,
-                                  kernel_initializer=tf.random_normal_initializer(stddev=0.1, dtype=tf.float32),
-                                  bias_initializer=tf.constant_initializer(0.1))
-            return output
+                                     self.model_info["fully_connected_layer_units"][layer_id],
+                                     tf.nn.relu,
+                                     kernel_initializer=tf.random_normal_initializer(stddev=0.1, dtype=tf.float32),
+                                     bias_initializer=tf.constant_initializer(0.1))
+        return output
+
+    def create_output_layer(self, layer_input):
+        with tf.variable_scope("output_layer") as scope:
+            output = tf.layers.dense(layer_input,
+                                     self.model_info["output_layer_units"],
+                                     tf.nn.softmax,
+                                     kernel_initializer=tf.random_normal_initializer(stddev=0.1, dtype=tf.float32),
+                                     bias_initializer=tf.constant_initializer(0.1))
+        return output
+
+    def train(self):
