@@ -4,41 +4,15 @@ import numpy as np
 from tensorflow.examples.tutorials.mnist import input_data
 
 
-data_path = r'.\data\images'
-image_batch = []
-label_batch = []
-input_num = 20
-i = 0
-for f in os.listdir(data_path):
-    image_batch.append(data_path + "\\" + f)
-    label_batch.append([1, 0])
-    if i > input_num:
-        break
-    i += 1
-
-image = tf.cast(image_batch, tf.string)
-label = tf.cast(label_batch, tf.int32)
-input_queue = tf.train.slice_input_producer([image, label])
-image = input_queue[0]
-label = input_queue[1]
-image = tf.read_file(image)
-image = tf.image.decode_jpeg(image, channels=3)
-image = tf.image.resize_image_with_crop_or_pad(image, 120, 46)
-image_batch, label_batch = tf.train.batch([image, label], batch_size=10, num_threads=64, capacity=1000)
-image_batch = tf.cast(image_batch, tf.float32)
-label_batch = tf.cast(label_batch, tf.float32)
-print("data load successful...")
-
-
 model_info = {
-    'learning_rate': 0.0002,
-    'input_layer_batch_size': 10,
-    'input_layer_image_shape': [120, 46],
-    'input_layer_image_channel': 3,
+    'learning_rate': 0.001,
+    'input_layer_batch_size': 100,
+    'input_layer_image_shape': [20, 20],
+    'input_layer_image_channels': 1,
     'conv_and_pool_layer_num': 2,
     'conv_and_pool_layer_filter_ksize': [
-        [5, 5],
-        [5, 5]
+        [3, 3],
+        [3, 3]
     ],
     'conv_and_pool_layer_filter_strides': [
         [1, 1],
@@ -54,28 +28,57 @@ model_info = {
         [2, 2],
         [2, 2]
     ],
-    'fully_connected_layer_num': 2,
-    'fully_connected_layer_units': [128, 128],
+    'fully_connected_layer_num': 1,
+    'fully_connected_layer_units': [20],
     'output_layer_units': 2
 }
 
+print("data load successful...")
+
 
 class CnnModel:
-    def __init__(self, model_shape, image_batch, label_batch):
-        self.model_info = model_shape
-        self.image_batch = image_batch
-        self.label_batch = label_batch
+    def __init__(self, model_info):
+        self.data_path = r'.\data\is_num_images'
+        self.model_path = '.\data\is_num_model'
+        self.model_info = model_info
         self.output = None
         self.loss = None
         self.minimizer = None
         self.accuracy = None
-        self.create_model()
+        self.image_batch, self.label_batch = None, None
 
-        self.sess_init = tf.global_variables_initializer()
-        self.sess = tf.Session()
-        self.sess.run(self.sess_init)
-        coord = tf.train.Coordinator()
-        threads = tf.train.start_queue_runners(sess=self.sess, coord=coord)
+    def input_files(self, input_num=8000):
+        image_batch = []
+        label_batch = []
+        i = 0
+        for f in os.listdir(self.data_path):
+            image_batch.append(self.data_path + "\\" + f)
+            if f.split("-")[0] == "0":
+                label_batch.append(0)
+            else:
+                label_batch.append(1)
+            if i >= input_num:
+                break
+            i += 1
+        return image_batch, label_batch
+
+    def get_batch(self, image_batch, label_batch):
+        image = tf.cast(image_batch, tf.string)
+        label = tf.cast(label_batch, tf.int32)
+        input_queue = tf.train.slice_input_producer([image, label])
+        image = input_queue[0]
+        label = input_queue[1]
+        image = tf.read_file(image)
+        image = tf.image.decode_jpeg(image, channels=3)
+        image = tf.image.rgb_to_grayscale(image)
+        image = tf.image.resize_image_with_crop_or_pad(image, self.model_info['input_layer_image_shape'][0],
+                                                       self.model_info['input_layer_image_shape'][1])
+        image_batch, label_batch = tf.train.shuffle_batch([image, label],
+                                                          batch_size=self.model_info['input_layer_batch_size'],
+                                                          num_threads=64, capacity=1000,
+                                                          min_after_dequeue=self.model_info['input_layer_batch_size'])
+        self.image_batch = tf.cast(image_batch, tf.float32)
+        self.label_batch = tf.cast(label_batch, tf.int32)
 
     def create_model(self):
         layer_input = self.image_batch
@@ -87,15 +90,17 @@ class CnnModel:
         for layer_id in range(self.model_info['fully_connected_layer_num']):
             layer_input = self.create_fully_connected_layer(layer_id, layer_input)
         self.output = self.create_output_layer(layer_input)
-        self.loss = -tf.reduce_sum(self.label_batch * tf.log(self.output))
+        self.loss = tf.reduce_sum(tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.output, labels=self.label_batch))
         self.minimizer = tf.train.AdamOptimizer(self.model_info['learning_rate']).minimize(self.loss)
-        self.accuracy = tf.reduce_mean(tf.cast(tf.equal(tf.math.argmax(self.output, 1), tf.math.argmax(self.label_batch, 1)), 'float'))
+        correct = tf.nn.in_top_k(self.output, self.label_batch, 1)
+        correct = tf.cast(correct, tf.float16)
+        self.accuracy = tf.reduce_mean(correct)
 
     def create_conv_and_pool_layer(self, layer_id, layer_input):
         conv_ksize = [
             self.model_info["conv_and_pool_layer_filter_ksize"][layer_id][0],
             self.model_info["conv_and_pool_layer_filter_ksize"][layer_id][1],
-            self.model_info["input_layer_image_channel"],
+            self.model_info["input_layer_image_channels"],
             self.model_info["conv_and_pool_layer_filter_cores"][layer_id]
         ]
         if layer_id > 0:
@@ -148,7 +153,7 @@ class CnnModel:
         with tf.variable_scope("output_layer") as scope:
             output = tf.layers.dense(layer_input,
                                      self.model_info["output_layer_units"],
-                                     tf.nn.softmax,
+                                     None,
                                      kernel_initializer=tf.random_normal_initializer(stddev=0.1, dtype=tf.float32),
                                      bias_initializer=tf.constant_initializer(0.1))
             print(layer_input.shape)
@@ -156,14 +161,56 @@ class CnnModel:
         return output
 
     def train(self):
+        self.image_batch, self.label_batch = self.input_files()
+        self.get_batch(self.image_batch, self.label_batch)
+        self.create_model()
+        self.sess = tf.Session()
+        self.sess_init = tf.global_variables_initializer()
+        ckpt = tf.train.get_checkpoint_state(self.model_path)
+        self.saver = tf.train.Saver()
+        if ckpt and ckpt.model_checkpoint_path:
+            self.saver.restore(self.sess, ckpt.model_checkpoint_path)
+        else:
+            self.sess.run(tf.global_variables_initializer())
+        coord = tf.train.Coordinator()
+        self.threads = tf.train.start_queue_runners(sess=self.sess, coord=coord)
+
         print("start training...")
-        for i in range(2000):
+        total_accuracy = 0
+        step = 0
+        for i in range(1, 100000):
+            step += 1
             _, loss, accuracy = self.sess.run([self.minimizer, self.loss, self.accuracy])
-            print(i, accuracy, loss)
+            total_accuracy += float(accuracy)
+
+            # if i % 125 == 0:
+            print(i, total_accuracy / step, loss)
+
+            if i % 500 == 0:
+                self.saver.save(self.sess, self.model_path + '\model.ckpt', global_step=i)
+                total_accuracy = 0
+                step = 0
+
+    def evaluate(self, image_path):
+        self.model_info['input_layer_batch_size'] = 1
+        self.get_batch([image_path], [0])
+        self.create_model()
+        self.sess = tf.Session()
+        self.sess_init = tf.global_variables_initializer()
+        ckpt = tf.train.get_checkpoint_state(self.model_path)
+        self.saver = tf.train.Saver()
+        if ckpt and ckpt.model_checkpoint_path:
+            self.saver.restore(self.sess, ckpt.model_checkpoint_path)
+        else:
+            self.sess.run(tf.global_variables_initializer())
+        coord = tf.train.Coordinator()
+        self.threads = tf.train.start_queue_runners(sess=self.sess, coord=coord)
+        output, loss, accuracy = self.sess.run([self.output, self.loss, self.accuracy])
+        print(list(output))
 
 
-cnn = CnnModel(model_info, image_batch, label_batch)
-cnn.train()
+cnn = CnnModel(model_info)
+cnn.evaluate(r'.\data\is_num_images\0-297.jpg')
 
 # mnist = input_data.read_data_sets('MNIST_data', one_hot=True)
 #
