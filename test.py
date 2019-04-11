@@ -1,28 +1,31 @@
 from PIL import Image
 from pylab import *
 import random
+import os
 
 
-path = r'.\data\test_images\1.jpeg'
+path = r'.\data\test_images\2.jpeg'
 out_path = r'.\data\is_num_images\\'
 original_image = Image.open(path)
-count_1 = 411
-count_0 = 5589
+count_1 = 3282
+count_0 = 3708
+xy1 = [140, 640]
+xy2 = [1280, 700]
 for i in range(3000):
-    # x = random.randint(155, original_image.size[0])
-    # y = random.randint(355, original_image.size[1])
-    x = random.randint(155, 775)
-    y = random.randint(355, 400)
+    x = random.randint(0, original_image.size[0])
+    y = random.randint(0, original_image.size[1])
+    # x = random.randint(xy1[0], xy2[0])
+    # y = random.randint(xy1[1], xy2[1])
     image = original_image.crop((x, y, x + 20, y + 20))
-    if 155 < x < 775 and 355 < y < 400:
+    if xy1[0] < x < xy2[0] and xy1[1] < y < xy2[1]:
         count_1 += 1
         image.save(out_path + '1-' + str(count_1) + '.jpg')
     else:
         count_0 += 1
         image.save(out_path + '0-' + str(count_0) + '.jpg')
-
-# imshow(array(original_image))
-# show()
+        # os.remove(out_path + '0-' + str(count_0) + '.jpg')
+imshow(original_image)
+show()
 
 # import tensorflow as tf
 # import os
