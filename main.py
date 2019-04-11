@@ -53,6 +53,8 @@ class CnnModel:
         labels = []
         i = 0
         for f in os.listdir(self.data_path):
+            # if int(f.split("-")[1].split(".")[0]) < 3282:
+            #     continue
             image_paths.append(self.data_path + "\\" + f)
             if f.split("-")[0] == "0":
                 labels.append(0)
@@ -187,7 +189,7 @@ class CnnModel:
             epoch_accuracy += float(accuracy)
 
             if step % 20 == 0:
-                print("step:" + str(step), epoch_accuracy / step, loss)
+                print("step:" + str(step), epoch_accuracy / epoch_step, loss)
 
             if step % 500 == 0:
                 self.saver.save(self.sess, self.model_path + r'\model.ckpt', global_step=step)
@@ -220,7 +222,7 @@ class Evaluate:
         return int(output)
 
     def find_num_position(self, slice_image_path):
-        image = Image.open(slice_image_path)
+        image = self.resize_image(slice_image_path)
         slice_images = []
         slice_image_paths = []
         slice_image_position = []
@@ -237,7 +239,6 @@ class Evaluate:
         self.cnn.create_model()
         output = list(self.cnn.sess.run(tf.arg_max(self.cnn.output, 1)))
         show_square_image = array(image)
-        print(output[1027], slice_image_paths[1027], slice_image_position[1027], len(output))
         for i in range(len(output)):
             if output[i] == 1:
                 for x in range(slice_image_position[i][0], slice_image_position[i][0] + 20):
@@ -251,10 +252,26 @@ class Evaluate:
             os.remove(i)
         return list(output)
 
+    @staticmethod
+    def resize_image(image_path, mwidth=960, mheight=720):
+        image = Image.open(image_path)
+        w, h = image.size
+        if w <= mwidth and h <= mheight:
+            return image
+        if (1.0 * w / mwidth) > (1.0 * h / mheight):
+            scale = 1.0 * w / mwidth
+            new_im = image.resize((int(w / scale), int(h / scale)), Image.ANTIALIAS)
+
+        else:
+            scale = 1.0 * h / mheight
+            new_im = image.resize((int(w / scale), int(h / scale)), Image.ANTIALIAS)
+
+        return new_im
+
 
 if __name__ == "__main__":
     # cnn = Evaluate(MODEL_INFO)
-    # cnn.find_num_position(r'.\data\test_images\3.jpeg')
+    # cnn.find_num_position(r'.\data\test_images\2.jpeg')
     # cnn.evaluate_is_num(r'.\data\temp\1027.jpg')
     trainer = Trainer(MODEL_INFO)
     trainer.start_train()
