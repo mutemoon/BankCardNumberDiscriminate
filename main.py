@@ -48,12 +48,12 @@ class CnnModel:
         self.sess = None
         self.saver = None
 
-    def get_image_paths_and_labels_from_image_files(self, input_max_size=8000):
+    def get_image_paths_and_labels_from_image_files(self, input_max_size=60000):
         image_paths = []
         labels = []
         i = 0
         for f in os.listdir(self.data_path):
-            # if int(f.split("-")[1].split(".")[0]) < 3282:
+            # if int(f.split("-")[1].split(".")[0]) > 3282:
             #     continue
             image_paths.append(self.data_path + "\\" + f)
             if f.split("-")[0] == "0":
@@ -175,7 +175,7 @@ class CnnModel:
         with tf.variable_scope("output_layer") as scope:
             output = tf.layers.dense(layer_input,
                                      self.model_info["output_layer_units"],
-                                     tf.nn.softmax,
+                                     None,
                                      kernel_initializer=tf.random_normal_initializer(stddev=0.1, dtype=tf.float32),
                                      bias_initializer=tf.constant_initializer(0.1))
         return output
@@ -239,13 +239,25 @@ class Evaluate:
         self.cnn.create_model()
         output = list(self.cnn.sess.run(tf.arg_max(self.cnn.output, 1)))
         show_square_image = array(image)
-        for i in range(len(output)):
-            if output[i] == 1:
-                for x in range(slice_image_position[i][0], slice_image_position[i][0] + 20):
-                    for y in range(slice_image_position[i][1], slice_image_position[i][1] + 20):
-                        show_square_image[y][x] = [255, 0, 0]
-                        if x >= image.size[0] or y >= image.size[1]:
-                            continue
+        most_vote = [0] * int(image.size[1] / 20)
+        for y in range(int(image.size[1] / 20)):
+            for x in range(int(image.size[0] / 20)):
+                if output[x * int(image.size[1] / 20) + y] == 1:
+                    most_vote[y] += 1
+        most_vote_y = most_vote.index(max(most_vote))
+        print(most_vote)
+        print(most_vote.index(max(most_vote)))
+        for i in range(len(show_square_image[most_vote_y])):
+            show_square_image[most_vote_y * 20][i] = [255, 0, 0]
+            show_square_image[most_vote_y * 20 + 1][i] = [255, 0, 0]
+            show_square_image[most_vote_y * 20 + 60][i] = [255, 0, 0]
+            show_square_image[most_vote_y * 20 + 60 + 1][i] = [255, 0, 0]
+        # for i in range(len(output)):
+        #     if output[i] == 1:
+        #         for x in range(slice_image_position[i][0], slice_image_position[i][0] + 20):
+        #             for y in range(slice_image_position[i][1], slice_image_position[i][1] + 20):
+        #                 if x >= image.size[0] or y >= image.size[1]:
+        #                     continue
         imshow(show_square_image)
         show()
         for i in slice_image_paths:
@@ -270,8 +282,8 @@ class Evaluate:
 
 
 if __name__ == "__main__":
-    # cnn = Evaluate(MODEL_INFO)
-    # cnn.find_num_position(r'.\data\test_images\2.jpeg')
+    cnn = Evaluate(MODEL_INFO)
+    cnn.find_num_position(r'.\data\test_images\IMG_7945.JPG')
     # cnn.evaluate_is_num(r'.\data\temp\1027.jpg')
-    trainer = Trainer(MODEL_INFO)
-    trainer.start_train()
+    # trainer = Trainer(MODEL_INFO)
+    # trainer.start_train()
