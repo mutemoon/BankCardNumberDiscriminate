@@ -1,17 +1,21 @@
+import os
+os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+os.environ["CUDA_VISIBLE_DEVICES"] = "-1"
 import tensorflow as tf
 import os
 from PIL import Image
 from pylab import *
+import random
 
 MODEL_INFO = {
-    'learning_rate': 0.001,
-    'input_layer_batch_size': 100,
-    'input_layer_image_shape': [20, 20],
+    'learning_rate': 0.0001,
+    'input_layer_batch_size': 1000,
+    'input_layer_image_shape': [10, 10],
     'input_layer_image_channels': 1,
     'conv_and_pool_layer_num': 2,
     'conv_and_pool_layer_filter_ksize': [
-        [3, 3],
-        [3, 3]
+        [2, 2],
+        [2, 2]
     ],
     'conv_and_pool_layer_filter_strides': [
         [1, 1],
@@ -21,7 +25,7 @@ MODEL_INFO = {
 
     'conv_and_pool_layer_pool_ksize': [
         [3, 3],
-        [3, 3]
+        [2, 2]
     ],
     'conv_and_pool_layer_pool_strides': [
         [2, 2],
@@ -40,7 +44,9 @@ class CnnModel:
         self.model_info = model_info
 
         self.image_batch, self.label_batch = None, None
+        self.prob = None
         self.output = None
+        self.drop_output = None
         self.loss = None
         self.minimizer = None
         self.accuracy = None
@@ -48,7 +54,7 @@ class CnnModel:
         self.sess = None
         self.saver = None
 
-    def get_image_paths_and_labels_from_image_files(self, input_max_size=60000):
+    def get_image_paths_and_labels_from_image_files(self, input_max_size=200000):
         image_paths = []
         labels = []
         i = 0
@@ -98,16 +104,17 @@ class CnnModel:
         for layer_id in range(self.model_info['fully_connected_layer_num']):
             layer_input = self.create_fully_connected_layer(layer_id, layer_input)
         self.output = self.create_output_layer(layer_input)
-
+        self.prob = tf.placeholder(dtype=tf.float32)
+        self.drop_output = tf.nn.dropout(self.output, self.prob)
         self.loss = tf.reduce_sum(
-            tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.output, labels=self.label_batch))
+            tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.drop_output, labels=self.label_batch))
         self.minimizer = tf.train.AdamOptimizer(self.model_info['learning_rate']).minimize(self.loss)
 
-        correct = tf.nn.in_top_k(self.output, self.label_batch, 1)
+        correct = tf.nn.in_top_k(self.drop_output, self.label_batch, 1)
         correct = tf.cast(correct, tf.float16)
         self.accuracy = tf.reduce_mean(correct)
-
-        self.sess = tf.Session()
+        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.1)
+        self.sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
         self.saver = tf.train.Saver()
         ckpt = tf.train.get_checkpoint_state(self.model_path)
         if ckpt and ckpt.model_checkpoint_path:
@@ -185,7 +192,7 @@ class CnnModel:
         epoch_accuracy = 0
         epoch_step = 0
         for step in range(1, 100000):
-            _, loss, accuracy = self.sess.run([self.minimizer, self.loss, self.accuracy])
+            _, loss, accuracy = self.sess.run([self.minimizer, self.loss, self.accuracy], feed_dict={self.prob: 0.5})
             epoch_accuracy += float(accuracy)
 
             if step % 20 == 0:
@@ -217,19 +224,22 @@ class Evaluate:
     def evaluate_is_num(self, image_path):
         self.cnn.create_batch([image_path], [0])
         self.cnn.create_model()
-        output = self.cnn.sess.run(tf.arg_max(self.cnn.output, 1))
+        output = self.cnn.sess.run(tf.arg_max(self.cnn.output, 1), {1})
         print(output)
         return int(output)
 
     def find_num_position(self, slice_image_path):
-        image = self.resize_image(slice_image_path)
+        crop_size = self.cnn.model_info['input_layer_image_shape']
+        # image = self.resize_image(slice_image_path)
+        image = Image.open(slice_image_path)
         slice_images = []
         slice_image_paths = []
         slice_image_position = []
-        for x in range(int(image.size[0] / 20)):
-            for y in range(int(image.size[1] / 20)):
-                slice_images.append(image.crop((x * 20, y * 20, (x + 1) * 20, (y + 1) * 20)))
-                slice_image_position.append([x * 20, y * 20])
+        for x in range(image.size[0] - int(crop_size[0] / 2)):
+            for y in range(image.size[1] - int(crop_size[1] / 2)):
+                if (x % crop_size[0] == 0) and (y % crop_size[1] == 0):# or x % crop_size[0] == int(crop_size[0] / 2)) and (y % crop_size[1] == 0 or y % crop_size[1] == int(crop_size[1] / 2)):
+                    slice_images.append(image.crop((x, y, x + crop_size[0], y + crop_size[1])))
+                    slice_image_position.append([x, y])
         for i in range(len(slice_images)):
             slice_image_path = r'.\data\temp\\' + str(i) + ".jpg"
             slice_image_paths.append(slice_image_path)
@@ -237,27 +247,23 @@ class Evaluate:
         self.cnn.model_info["input_layer_batch_size"] = len(slice_image_paths)
         self.cnn.create_batch(slice_image_paths, [0] * len(slice_image_paths), False)
         self.cnn.create_model()
-        output = list(self.cnn.sess.run(tf.arg_max(self.cnn.output, 1)))
+        output = list(self.cnn.sess.run(tf.arg_max(self.cnn.drop_output, 1), feed_dict={self.cnn.prob: 1}))
         show_square_image = array(image)
-        most_vote = [0] * int(image.size[1] / 20)
-        for y in range(int(image.size[1] / 20)):
-            for x in range(int(image.size[0] / 20)):
-                if output[x * int(image.size[1] / 20) + y] == 1:
-                    most_vote[y] += 1
-        most_vote_y = most_vote.index(max(most_vote))
-        print(most_vote)
-        print(most_vote.index(max(most_vote)))
-        for i in range(len(show_square_image[most_vote_y])):
-            show_square_image[most_vote_y * 20][i] = [255, 0, 0]
-            show_square_image[most_vote_y * 20 + 1][i] = [255, 0, 0]
-            show_square_image[most_vote_y * 20 + 60][i] = [255, 0, 0]
-            show_square_image[most_vote_y * 20 + 60 + 1][i] = [255, 0, 0]
-        # for i in range(len(output)):
-        #     if output[i] == 1:
-        #         for x in range(slice_image_position[i][0], slice_image_position[i][0] + 20):
-        #             for y in range(slice_image_position[i][1], slice_image_position[i][1] + 20):
-        #                 if x >= image.size[0] or y >= image.size[1]:
-        #                     continue
+        for i in range(len(output)):
+            if output[i] == 1:
+                for x in range(slice_image_position[i][0], slice_image_position[i][0] + crop_size[0]):
+                    for y in range(slice_image_position[i][1], slice_image_position[i][1] + crop_size[1]):
+                        if x >= image.size[0] or y >= image.size[1]:
+                            continue
+                        show_square_image[y][x][0] += 1
+                        show_square_image[y][x][1] = 0
+                        show_square_image[y][x][2] = 0
+        # for i in range(len(most_vote)):
+        #     for j in range(most_vote[i] * 10):
+        #         show_square_image[i * crop_size[1] + 9][j] = [0, 0, 255]
+        #         show_square_image[i * crop_size[1] + 10][j] = [0, 0, 255]
+        #         show_square_image[i * crop_size[1] + 11][j] = [0, 0, 255]
+        # print(most_vote, most_vote_y, most_vote[most_vote_y])
         imshow(show_square_image)
         show()
         for i in slice_image_paths:
@@ -283,7 +289,7 @@ class Evaluate:
 
 if __name__ == "__main__":
     cnn = Evaluate(MODEL_INFO)
-    cnn.find_num_position(r'.\data\test_images\IMG_7945.JPG')
+    cnn.find_num_position(r'.\data\test_images\9.jpeg')
     # cnn.evaluate_is_num(r'.\data\temp\1027.jpg')
     # trainer = Trainer(MODEL_INFO)
     # trainer.start_train()

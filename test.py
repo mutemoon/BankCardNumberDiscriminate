@@ -3,7 +3,7 @@ from pylab import *
 import random
 import os
 
-crop_size = 20
+crop_size = 50
 path = r'.\data\test_images\2.jpeg'
 out_path = r'.\data\is_num_images\\'
 original_image = Image.open(path)
@@ -42,12 +42,12 @@ for i in range(6000):
     else:
         x = random.randint(xy1[0] - crop_size, xy2[0] - crop_size)
         y = random.randint(xy1[1] - crop_size, xy2[1] - crop_size)
-    image = resize_image.crop((x, y, x + 20, y + 20))
+    image = resize_image.crop((x, y, x + crop_size, y + crop_size))
     if xy1[0] - crop_size < x < xy2[0] - crop_size and xy1[1] - crop_size < y < xy2[1] - crop_size:
         count_1 += 1
         image.save(out_path + '1-' + str(count_1) + '.jpg')
     else:
-        count_0 += 1
+        count_0 +=
         image.save(out_path + '0-' + str(count_0) + '.jpg')
         # os.remove(out_path + '0-' + str(count_0) + '.jpg')
 
