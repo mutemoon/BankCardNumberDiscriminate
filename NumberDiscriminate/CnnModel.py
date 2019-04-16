@@ -5,7 +5,7 @@ from pylab import *
 MODEL_INFO = {
     'learning_rate': 0.001,
     'input_layer_batch_size': 128,
-    'input_layer_image_shape': [45, 45],
+    'input_layer_image_shape': [30, 46],
     'input_layer_image_channels': 1,
     'conv_and_pool_layer_num': 2,
     'conv_and_pool_layer_filter_ksize': [
@@ -47,7 +47,7 @@ class CnnModel:
         self.sess = None
         self.saver = None
 
-    def get_image_paths_and_labels_from_image_files(self, input_max_size=60000):
+    def get_image_paths_and_labels_from_image_files(self, input_max_size=1000000):
         image_paths = []
         labels = []
         i = 0
