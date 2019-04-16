@@ -1,4 +1,5 @@
 import numpy as np
+import os
 import cv2
 from matplotlib import pyplot as plt
 from PIL import Image
@@ -8,11 +9,6 @@ from albumentations import (
     IAAAdditiveGaussianNoise, GaussNoise, MotionBlur, MedianBlur, IAAPiecewiseAffine,
     IAASharpen, IAAEmboss, RandomContrast, RandomBrightness, Flip, OneOf, Compose
 )  # 图像变换函数
-
-
-image_path = r'.\data\single_images\0-0.jpg'
-image = cv2.imread(image_path, 1)  # BGR
-image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
 
 
 def strong_aug(p=.5):
@@ -46,18 +42,33 @@ def strong_aug(p=.5):
     ], p=p)
 
 
-w = 4
-h = 4
-for i in range(1, w * h):
-    plt.subplot(w, h, i)
-    aug = strong_aug(100)
-    img_strong_aug = aug(image=image)['image']
-    plt.imshow(img_strong_aug)
-plt.subplot(w, h, 16)
-plt.imshow(image)
-image = Image.fromarray(image)
-image.save("1.jpg")
-plt.show()
+save_path = r'.\data\strong_single_images'
+images_path = r'.\data\single_images'
+file_id = [0] * 10
+files = os.listdir(images_path)
 
-save_path = r'.\d'
-for i in range()
+for f in files:
+    image_path = os.path.join(images_path, f)
+    image = cv2.imread(image_path, 1)
+    image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+    aug = strong_aug(100)
+    for i in range(80):
+        strong_image = aug(image=image)['image']
+        strong_image = Image.fromarray(strong_image)
+        strong_image.save(save_path + "\\" + f[0] + "-" + str(file_id[int(f[0])]) + ".jpg")
+        file_id[int(f[0])] += 1
+
+
+# image = cv2.imread(r'.\data\single_images\0-0.jpg', 1)
+# image = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
+# aug = strong_aug(1)
+
+# w = 10
+# h = 10
+# for i in range(w * h):
+#     plt.subplot(w, h, i + 1)
+#     img_strong_aug = aug(image=image)['image']
+#     img_strong_aug = Image.fromarray(img_strong_aug)
+#     plt.imshow(img_strong_aug)
+# plt.imshow(image)
+# plt.show()
