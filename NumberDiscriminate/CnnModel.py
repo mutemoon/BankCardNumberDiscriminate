@@ -1,6 +1,6 @@
 import tensorflow as tf
 from pylab import *
-
+import os
 
 MODEL_INFO = {
     'learning_rate': 0.001,
@@ -28,14 +28,14 @@ MODEL_INFO = {
     ],
     'fully_connected_layer_num': 1,
     'fully_connected_layer_units': [100],
-    'output_layer_units': 10
+    'output_layer_units': 11
 }
 
 
 class CnnModel:
     def __init__(self, model_info):
-        self.data_path = r'.\data\is_num_images'
-        self.model_path = r'.\data\is_num_model'
+        self.data_path = r'.\data\strong_single_images'
+        self.model_path = r'.\data\model'
         self.model_info = model_info
 
         self.image_batch, self.label_batch = None, None
@@ -53,10 +53,11 @@ class CnnModel:
         i = 0
         for f in os.listdir(self.data_path):
             image_paths.append(self.data_path + "\\" + f)
-            if f.split("-")[0] == "0":
-                labels.append(0)
+            if '0' <= f.split("-")[0] <= '9':
+                labels.append(int(f.split("-")[0]))
             else:
-                labels.append(1)
+                labels.append(10)
+
 
             if i >= input_max_size:
                 break
@@ -74,8 +75,7 @@ class CnnModel:
         image = tf.image.decode_jpeg(image, channels=3)
         if self.model_info['input_layer_image_channels'] == 1:
             image = tf.image.rgb_to_grayscale(image)
-        image = tf.image.resize_image_with_crop_or_pad(image, self.model_info['input_layer_image_shape'][0],
-                                                       self.model_info['input_layer_image_shape'][1])
+        image = tf.image.resize_image_with_crop_or_pad(image, self.model_info['input_layer_image_shape'][1], self.model_info['input_layer_image_shape'][0])
         image, label = tf.train.batch([image, label],
                                       batch_size=self.model_info['input_layer_batch_size'],
                                       num_threads=64,
@@ -88,8 +88,8 @@ class CnnModel:
     def create_model(self):
         if self.image_batch is None and self.label_batch is None:
             self.image_batch = tf.placeholder(dtype=tf.float32, shape=[self.model_info['input_layer_batch_size'],
-                                                                       self.model_info['input_layer_image_shape'][0],
                                                                        self.model_info['input_layer_image_shape'][1],
+                                                                       self.model_info['input_layer_image_shape'][0],
                                                                        self.model_info['input_layer_image_channels']])
             self.label_batch = tf.placeholder(dtype=tf.int32, shape=[self.model_info['input_layer_batch_size']])
         layer_input = self.image_batch
@@ -101,7 +101,6 @@ class CnnModel:
         for layer_id in range(self.model_info['fully_connected_layer_num']):
             layer_input = self.create_fully_connected_layer(layer_id, layer_input)
         self.output = self.create_output_layer(layer_input)
-
         self.loss = tf.reduce_sum(
             tf.nn.sparse_softmax_cross_entropy_with_logits(logits=self.output, labels=self.label_batch))
         self.minimizer = tf.train.AdamOptimizer(self.model_info['learning_rate']).minimize(self.loss)
@@ -109,8 +108,9 @@ class CnnModel:
         correct = tf.nn.in_top_k(self.output, self.label_batch, 1)
         correct = tf.cast(correct, tf.float16)
         self.accuracy = tf.reduce_mean(correct)
+        gpu_options = tf.GPUOptions(per_process_gpu_memory_fraction=0.1)
 
-        self.sess = tf.Session()
+        self.sess = tf.Session(config=tf.ConfigProto(gpu_options=gpu_options))
         self.saver = tf.train.Saver()
         ckpt = tf.train.get_checkpoint_state(self.model_path)
         if ckpt and ckpt.model_checkpoint_path:
